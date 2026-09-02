@@ -343,8 +343,9 @@ function New-WinScpScript {
     # watchers were dying on the hour with "Software caused connection abort", which
     # 'option batch abort' makes fatal. Long-lived watcher sessions over a trusted
     # network are worth more here than periodic rekeying.
+    $escPass = if ($Config.Password) { $Config.Password -replace '"', '""' } else { '' }
     $openCmd = 'open sftp://{0}@{1}:{2}/ -password="{3}" -hostkey="{4}" -timeout=30 -rawsettings AddressFamily={5} PingType=2 PingInterval=30 TCPKeepalives=1 RekeyTime=0 RekeyData=0' -f `
-        $Config.Username, $Config.HostName, $Config.Port, $Config.Password, $Config.HostKey, $script:AddressFamily
+        $Config.Username, $Config.HostName, $Config.Port, $escPass, $Config.HostKey, $script:AddressFamily
     $lines.Add($openCmd) | Out-Null
 
     # A reconciling sync first, so "watch" starts from a known state. keepuptodate only
