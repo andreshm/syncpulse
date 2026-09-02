@@ -1,0 +1,4 @@
+{
+  "_comment": "Pinned SSH host key fingerprints, keyed by host:port. Used by Deploy-Site.ps1. Get a fingerprint with: ssh-keyscan -t ed25519 <host> | ssh-keygen -lf - then format it as WinSCP reports it: 'ssh-ed25519 255 <base64>' without SHA256: prefix.",
+  "example.com:22": "ssh-ed25519 255 YOUR_SERVER_HOSTKEY_FINGERPRINT_HERE"
+}

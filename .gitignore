@@ -1,0 +1,11 @@
+# Site configuration and server fingerprints containing private info
+sites.json
+known-hosts.json
+
+# Temporary scripts, state & test artifacts
+*.log
+*.tmp
+*.pid
+*.txt
+scratch/
+test_*.ps1
