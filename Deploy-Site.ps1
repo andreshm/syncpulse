@@ -344,7 +344,7 @@ function New-WinScpScript {
     # 'option batch abort' makes fatal. Long-lived watcher sessions over a trusted
     # network are worth more here than periodic rekeying.
     $escPass = if ($Config.Password) { $Config.Password -replace '"', '""' } else { '' }
-    $openCmd = 'open sftp://{0}@{1}:{2}/ -password="{3}" -hostkey="{4}" -timeout=30 -rawsettings AddressFamily={5} PingType=2 PingInterval=30 TCPKeepalives=1 RekeyTime=0 RekeyData=0' -f `
+    $openCmd = 'open sftp://{0}@{1}:{2}/ -password="{3}" -hostkey="{4}" -timeout=30 -rawsettings AddressFamily={5} PingType=2 PingInterval=1 TCPKeepalives=1 RekeyTime=0 RekeyData=0' -f `
         $Config.Username, $Config.HostName, $Config.Port, $escPass, $Config.HostKey, $script:AddressFamily
     $lines.Add($openCmd) | Out-Null
 
