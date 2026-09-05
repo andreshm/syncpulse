@@ -275,7 +275,7 @@ function Show-SiteEditorDialog {
     $lblIgnore.Size = New-Object System.Drawing.Size($labelWidth, 23)
     $form.Controls.Add($lblIgnore) | Out-Null
 
-    $defaultIgnore = ".vscode, .git, .gitignore, .env*, *.pem, *.key, *.sql, *.sqlite, *.bak, node_modules, dist, build, *.log, *.map, vendor, _bk, _notes, deploy"
+    $defaultIgnore = ".vscode, .git, .gitignore, .env*, *.pem, *.key, *.sql, *.sqlite, *.bak, node_modules, dist, build, *.log, *.map, vendor, _bk, _notes, deploy, .tmp*, .sass-cache, .superpowers, .expo"
     $currentIgnore = if ($Site -and $Site.ignore) { ($Site.ignore -join ", ") } else { $defaultIgnore }
     $tbIgnore = New-Object System.Windows.Forms.TextBox
     $tbIgnore.Text = $currentIgnore
@@ -321,7 +321,7 @@ function Show-SiteEditorDialog {
             return $null
         }
 
-        $ignoreArr = $tbIgnore.Text -split '[,;\r\n]+' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+        $ignoreArr = $tbIgnore.Text -split '[,;\r\n]+' | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique
         $portVal = 22
         [int]::TryParse($tbPort.Text.Trim(), [ref]$portVal) | Out-Null
 
@@ -416,6 +416,14 @@ function Show-SiteManagerDialog {
             }
             $sitesFile = Get-SitesConfigFile
             $list | ConvertTo-Json -Depth 5 | Set-Content -Path $sitesFile -Encoding UTF8
+
+            # If watcher was active, restart it so new ignore masks and settings take effect immediately
+            $oldKey = Get-ProjectKey -ProjectPath $selected.localPath
+            if (Test-Watching -Key $oldKey) {
+                Invoke-Engine -EngineAction 'stop' -ProjectPath $selected.localPath
+                Invoke-Engine -EngineAction 'start' -ProjectPath $updated.localPath
+            }
+
             Reload-List
             Update-SiteListAndMenu
         }

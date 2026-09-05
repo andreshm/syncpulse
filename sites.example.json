@@ -24,7 +24,11 @@
       "*.map",
       "vendor",
       "_bk",
-      "_notes"
+      "_notes",
+      ".tmp*",
+      ".sass-cache",
+      ".superpowers",
+      ".expo"
     ]
   }
 ]
