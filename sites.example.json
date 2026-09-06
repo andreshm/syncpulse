@@ -24,13 +24,21 @@
       "*.map",
       "vendor",
       "_bk",
+      "__bk",
       "_notes",
       ".tmp*",
       ".sass-cache",
       ".superpowers",
       ".expo",
       "web.conf*",
-      "web.config"
+      "web.config",
+      "* - Copy*",
+      "*.7z",
+      "*.zip",
+      "*.bat",
+      "*.cmd",
+      ".aiexclude",
+      ".gitmodules"
     ]
   }
 ]
