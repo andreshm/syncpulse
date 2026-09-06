@@ -28,7 +28,9 @@
       ".tmp*",
       ".sass-cache",
       ".superpowers",
-      ".expo"
+      ".expo",
+      "web.conf*",
+      "web.config"
     ]
   }
 ]

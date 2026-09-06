@@ -275,7 +275,7 @@ function Show-SiteEditorDialog {
     $lblIgnore.Size = New-Object System.Drawing.Size($labelWidth, 23)
     $form.Controls.Add($lblIgnore) | Out-Null
 
-    $defaultIgnore = ".vscode, .git, .gitignore, .env*, *.pem, *.key, *.sql, *.sqlite, *.bak, node_modules, dist, build, *.log, *.map, vendor, _bk, _notes, deploy, .tmp*, .sass-cache, .superpowers, .expo"
+    $defaultIgnore = ".vscode, .git, .gitignore, .env*, *.pem, *.key, *.sql, *.sqlite, *.bak, node_modules, dist, build, *.log, *.map, vendor, _bk, _notes, deploy, .tmp*, .sass-cache, .superpowers, .expo, web.conf*, web.config"
     $currentIgnore = if ($Site -and $Site.ignore) { ($Site.ignore -join ", ") } else { $defaultIgnore }
     $tbIgnore = New-Object System.Windows.Forms.TextBox
     $tbIgnore.Text = $currentIgnore
