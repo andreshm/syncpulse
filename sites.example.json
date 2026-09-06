@@ -27,6 +27,8 @@
       "__bk",
       "_notes",
       ".tmp*",
+      ".tmp_*",
+      "tmp_*",
       ".sass-cache",
       ".superpowers",
       ".expo",

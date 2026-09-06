@@ -284,13 +284,8 @@ function ConvertTo-FileMask {
         foreach ($entry in $Ignore) {
             $e = "$entry".Trim().Trim('/')
             if (-not $e) { continue }
-            if ($e -match '[\*\?]') {
-                if ($seen.Add($e)) { $parts.Add($e) | Out-Null }
-            }
-            else {
-                if ($seen.Add("$e/")) { $parts.Add("$e/") | Out-Null }   # directory named $e
-                if ($seen.Add($e)) { $parts.Add($e) | Out-Null }        # file named $e
-            }
+            if ($seen.Add("$e/")) { $parts.Add("$e/") | Out-Null }   # directory match
+            if ($seen.Add($e)) { $parts.Add($e) | Out-Null }        # file match
         }
     }
     if ($parts.Count -eq 0) { return $null }
