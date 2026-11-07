@@ -1189,17 +1189,17 @@ function Update-SiteListAndMenu {
 }
 
 # ---------------------------------------------------------------- tray UI
- = New-DotBitmap ([System.Drawing.Color]::FromArgb(120, 120, 120))       # Grey: all idle / stopped
- = New-DotBitmap ([System.Drawing.Color]::FromArgb(40, 180, 70))         # Green: watching
- = New-DotBitmap ([System.Drawing.Color]::FromArgb(235, 170, 0))         # Yellow: down / warning
- = New-DotBitmap ([System.Drawing.Color]::FromArgb(0, 150, 240))         # Cyan: startup comparing
- = New-DotBitmap ([System.Drawing.Color]::FromArgb(140, 225, 255))   # Bright Sky: blinking pulse
+$bmpIdle = New-DotBitmap ([System.Drawing.Color]::FromArgb(120, 120, 120))       # Grey: all idle / stopped
+$bmpBusy = New-DotBitmap ([System.Drawing.Color]::FromArgb(40, 180, 70))         # Green: watching
+$bmpWarn = New-DotBitmap ([System.Drawing.Color]::FromArgb(235, 170, 0))         # Yellow: down / warning
+$bmpSync = New-DotBitmap ([System.Drawing.Color]::FromArgb(0, 150, 240))         # Cyan: startup comparing
+$bmpSyncBlink = New-DotBitmap ([System.Drawing.Color]::FromArgb(140, 225, 255))   # Bright Sky: blinking pulse
 
- = New-DotIconFromBitmap 
- = New-DotIconFromBitmap 
- = New-DotIconFromBitmap 
- = New-DotIconFromBitmap 
- = New-DotIconFromBitmap 
+$iconIdle = New-DotIconFromBitmap $bmpIdle
+$iconBusy = New-DotIconFromBitmap $bmpBusy
+$iconWarn = New-DotIconFromBitmap $bmpWarn
+$iconSync = New-DotIconFromBitmap $bmpSync
+$iconSyncBlink = New-DotIconFromBitmap $bmpSyncBlink
 
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
 $notify = New-Object System.Windows.Forms.NotifyIcon
