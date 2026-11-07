@@ -41,6 +41,9 @@ param(
     # When comparing, include all files by bypassing the exclusion rules.
     [switch]$IncludeIgnored,
 
+    # Additional exclusion patterns to exclude (e.g. *.tmp, cache/, test.txt)
+    [string[]]$ExtraIgnore = @(),
+
     # Override WinSCP location if installed somewhere unusual.
     [string]$WinScpPath,
 
@@ -517,6 +520,7 @@ function Invoke-SiteCompare {
         $Config,
         [string]$LocalPath,
         [switch]$ExcludeIgnored = $true,
+        [string[]]$ExtraIgnore = @(),
         [switch]$WithDelete
     )
 
@@ -527,7 +531,14 @@ function Invoke-SiteCompare {
     $openCmd = 'open sftp://{0}@{1}:{2}/ -password="{3}" -hostkey="{4}" -timeout=25 -rawsettings AddressFamily={5} PingType=2 PingInterval=1 TCPKeepalives=1 RekeyTime=0 RekeyData=0' -f `
         $Config.Username, $Config.HostName, $Config.Port, $escPass, $Config.HostKey, $script:AddressFamily
 
-    $mask = if ($ExcludeIgnored) { ConvertTo-FileMask -Ignore $Config.Ignore } else { ConvertTo-FileMask -Ignore @() }
+    $allIgnore = [System.Collections.Generic.List[string]]::new()
+    if ($ExcludeIgnored -and $Config.Ignore) {
+        foreach ($ig in $Config.Ignore) { if ($ig) { $allIgnore.Add("$ig".Trim().Replace('\', '/')) } }
+    }
+    if ($ExtraIgnore) {
+        foreach ($ig in $ExtraIgnore) { if ($ig) { $allIgnore.Add("$ig".Trim().Replace('\', '/')) } }
+    }
+    $mask = ConvertTo-FileMask -Ignore $allIgnore
     $syncOpts = "-nopermissions -transfer=binary -resumesupport=off -criteria=time,size -mirror -preview"
     if ($mask) { $syncOpts = "$syncOpts -filemask=""$mask""" }
     if ($WithDelete) { $syncOpts = "$syncOpts -delete" }
@@ -647,6 +658,7 @@ function Invoke-SiteUploadDiffs {
         [array]$Items,
         [switch]$UploadAll,
         [switch]$ExcludeIgnored = $true,
+        [string[]]$ExtraIgnore = @(),
         [switch]$WithDelete
     )
 
@@ -664,7 +676,14 @@ function Invoke-SiteUploadDiffs {
     $lines.Add($openCmd) | Out-Null
 
     if ($UploadAll) {
-        $mask = if ($ExcludeIgnored) { ConvertTo-FileMask -Ignore $Config.Ignore } else { ConvertTo-FileMask -Ignore @() }
+        $allIgnore = [System.Collections.Generic.List[string]]::new()
+        if ($ExcludeIgnored -and $Config.Ignore) {
+            foreach ($ig in $Config.Ignore) { if ($ig) { $allIgnore.Add("$ig".Trim().Replace('\', '/')) } }
+        }
+        if ($ExtraIgnore) {
+            foreach ($ig in $ExtraIgnore) { if ($ig) { $allIgnore.Add("$ig".Trim().Replace('\', '/')) } }
+        }
+        $mask = ConvertTo-FileMask -Ignore $allIgnore
         $syncOpts = "-nopermissions -transfer=binary -resumesupport=off -criteria=time,size -mirror"
         if ($mask) { $syncOpts = "$syncOpts -filemask=""$mask""" }
         if ($WithDelete) { $syncOpts = "$syncOpts -delete" }
@@ -784,7 +803,7 @@ switch ($Action) {
         $cfg = Get-SiteConfig -ProjectPath $Path
         $exclude = -not $IncludeIgnored
         Write-Host "Comparing $Path with $($cfg.HostName)$($cfg.RemotePath) (ExcludeIgnored: $exclude, Delete: $($Delete.IsPresent))..." -ForegroundColor Cyan
-        $res = Invoke-SiteCompare -Config $cfg -LocalPath $Path -ExcludeIgnored:$exclude -WithDelete:$Delete
+        $res = Invoke-SiteCompare -Config $cfg -LocalPath $Path -ExcludeIgnored:$exclude -ExtraIgnore $ExtraIgnore -WithDelete:$Delete
         if (-not $res.Success) {
             Write-Host "Comparison encountered an error. Check server connection." -ForegroundColor Red
             return

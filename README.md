@@ -1,4 +1,4 @@
-# 🚀 SyncPulse
+﻿# 🚀 SyncPulse
 
 > **Industrial-strength, automated SFTP continuous sync engine and system tray monitor for Windows developers.**
 
@@ -26,6 +26,8 @@ Includes an **interactive Windows System Tray controller** with real-time status
   - Main tray icon and per-project indicators pulse during startup comparison until real-time file monitoring begins.
 - 🔍 **On-Demand Remote Comparison & Selective Upload**:
   - Compare any project against the remote server on demand from the tray menu or Site Manager.
+  - **Manual Trigger**: Does not auto-scan on open — scan starts only when you click **Compare Now**.
+  - **Custom Extra Exclusions**: Add extra file or directory patterns (`*.tmp`, `cache/`, `secret.json`) before comparing, with handy **+ File...** and **+ Folder...** pickers and an option to permanently save them to `sites.json`.
   - Option to **exclude ignored patterns** (normal view) or **include all files** (full audit).
   - Clear, color-coded difference report showing new local files, modified files, size differences, and remote obsolete files.
   - Multi-select files to **Upload Selected**, **Upload All Differences**, or simply view and copy the report without uploading.

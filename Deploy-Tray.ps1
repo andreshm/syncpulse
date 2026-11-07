@@ -530,7 +530,7 @@ function Show-SiteCompareDialog {
     # Top Container holding Header banner and Options bar
     $pnlTop = New-Object System.Windows.Forms.Panel
     $pnlTop.Dock = [System.Windows.Forms.DockStyle]::Top
-    $pnlTop.Height = 104
+    $pnlTop.Height = 148
     $form.Controls.Add($pnlTop)
 
     # Header Panel (Top inside pnlTop)
@@ -558,44 +558,124 @@ function Show-SiteCompareDialog {
     # Options Panel (Bottom inside pnlTop)
     $pnlOptions = New-Object System.Windows.Forms.Panel
     $pnlOptions.Dock = [System.Windows.Forms.DockStyle]::Bottom
-    $pnlOptions.Height = 46
-    $pnlOptions.Padding = New-Object System.Windows.Forms.Padding(16, 8, 16, 4)
+    $pnlOptions.Height = 92
+    $pnlOptions.Padding = New-Object System.Windows.Forms.Padding(16, 6, 16, 6)
     $pnlTop.Controls.Add($pnlOptions)
 
+    # Row 1: Exclusions toggle, Obsolete check, Compare Now button, Progress bar, Status
     $chkExclude = New-Object System.Windows.Forms.CheckBox
     $chkExclude.Text = "Exclude ignored files / folders"
     $chkExclude.Checked = $true
-    $chkExclude.Location = New-Object System.Drawing.Point(16, 10)
+    $chkExclude.Location = New-Object System.Drawing.Point(16, 8)
     $chkExclude.Size = New-Object System.Drawing.Size(205, 24)
     $pnlOptions.Controls.Add($chkExclude)
 
     $chkDelete = New-Object System.Windows.Forms.CheckBox
     $chkDelete.Text = "Check remote obsolete (with delete)"
     $chkDelete.Checked = $false
-    $chkDelete.Location = New-Object System.Drawing.Point(230, 10)
-    $chkDelete.Size = New-Object System.Drawing.Size(230, 24)
+    $chkDelete.Location = New-Object System.Drawing.Point(228, 8)
+    $chkDelete.Size = New-Object System.Drawing.Size(225, 24)
     $pnlOptions.Controls.Add($chkDelete)
 
     $btnCompare = New-Object System.Windows.Forms.Button
     $btnCompare.Text = "Compare Now"
-    $btnCompare.Location = New-Object System.Drawing.Point(470, 8)
-    $btnCompare.Size = New-Object System.Drawing.Size(110, 28)
+    $btnCompare.Location = New-Object System.Drawing.Point(460, 6)
+    $btnCompare.Size = New-Object System.Drawing.Size(115, 28)
     $btnCompare.Font = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
     $pnlOptions.Controls.Add($btnCompare)
 
     $pb = New-Object System.Windows.Forms.ProgressBar
     $pb.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
-    $pb.Location = New-Object System.Drawing.Point(590, 12)
-    $pb.Size = New-Object System.Drawing.Size(120, 20)
+    $pb.Location = New-Object System.Drawing.Point(585, 10)
+    $pb.Size = New-Object System.Drawing.Size(100, 20)
     $pb.Visible = $false
     $pnlOptions.Controls.Add($pb)
 
     $lblStatus = New-Object System.Windows.Forms.Label
-    $lblStatus.Text = "Ready. Click 'Compare Now' to scan."
-    $lblStatus.Location = New-Object System.Drawing.Point(720, 12)
-    $lblStatus.Size = New-Object System.Drawing.Size(210, 20)
+    $lblStatus.Text = "Ready. Add any extra exclusions and click 'Compare Now'."
+    $lblStatus.Location = New-Object System.Drawing.Point(695, 10)
+    $lblStatus.Size = New-Object System.Drawing.Size(245, 20)
     $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(70, 80, 90)
+    $lblStatus.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
     $pnlOptions.Controls.Add($lblStatus)
+
+    # Row 2: Extra exclusions input box, File picker, Folder picker, Save to sites.json toggle
+    $lblExtra = New-Object System.Windows.Forms.Label
+    $lblExtra.Text = "Extra exclusions:"
+    $lblExtra.Location = New-Object System.Drawing.Point(16, 46)
+    $lblExtra.Size = New-Object System.Drawing.Size(105, 22)
+    $lblExtra.ForeColor = [System.Drawing.Color]::FromArgb(70, 80, 90)
+    $pnlOptions.Controls.Add($lblExtra)
+
+    $tbExtra = New-Object System.Windows.Forms.TextBox
+    $tbExtra.Location = New-Object System.Drawing.Point(124, 44)
+    $tbExtra.Size = New-Object System.Drawing.Size(445, 24)
+    $tbExtra.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
+    $tipExtra = New-Object System.Windows.Forms.ToolTip
+    $tipExtra.SetToolTip($tbExtra, "Comma-separated patterns to exclude, e.g. *.log, temp/, cache/, secret.json")
+    $pnlOptions.Controls.Add($tbExtra)
+
+    $btnAddFile = New-Object System.Windows.Forms.Button
+    $btnAddFile.Text = "+ File..."
+    $btnAddFile.Location = New-Object System.Drawing.Point(578, 43)
+    $btnAddFile.Size = New-Object System.Drawing.Size(75, 26)
+    $btnAddFile.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
+    $btnAddFile.Add_Click({
+        $ofd = New-Object System.Windows.Forms.OpenFileDialog
+        $ofd.InitialDirectory = $projPath
+        $ofd.Title = "Select File to Exclude from Comparison"
+        if ($ofd.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+            $fn = $ofd.FileName
+            $rel = if ($fn.StartsWith($projPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $fn.Substring($projPath.Length).TrimStart('\', '/').Replace('\', '/')
+            } else {
+                [System.IO.Path]::GetFileName($fn)
+            }
+            if ($rel) {
+                if ($tbExtra.Text.Trim()) {
+                    $tbExtra.Text = $tbExtra.Text.Trim().TrimEnd(',') + ", " + $rel
+                } else {
+                    $tbExtra.Text = $rel
+                }
+            }
+        }
+    })
+    $pnlOptions.Controls.Add($btnAddFile)
+
+    $btnAddFolder = New-Object System.Windows.Forms.Button
+    $btnAddFolder.Text = "+ Folder..."
+    $btnAddFolder.Location = New-Object System.Drawing.Point(658, 43)
+    $btnAddFolder.Size = New-Object System.Drawing.Size(85, 26)
+    $btnAddFolder.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
+    $btnAddFolder.Add_Click({
+        $fbd = New-Object System.Windows.Forms.FolderBrowserDialog
+        $fbd.SelectedPath = $projPath
+        $fbd.Description = "Select Folder to Exclude from Comparison"
+        if ($fbd.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+            $fp = $fbd.SelectedPath
+            $rel = if ($fp.StartsWith($projPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $fp.Substring($projPath.Length).TrimStart('\', '/').Replace('\', '/') + "/"
+            } else {
+                [System.IO.Path]::GetFileName($fp) + "/"
+            }
+            if ($rel -and $rel -ne "/") {
+                if ($tbExtra.Text.Trim()) {
+                    $tbExtra.Text = $tbExtra.Text.Trim().TrimEnd(',') + ", " + $rel
+                } else {
+                    $tbExtra.Text = $rel
+                }
+            }
+        }
+    })
+    $pnlOptions.Controls.Add($btnAddFolder)
+
+    $chkSaveToSite = New-Object System.Windows.Forms.CheckBox
+    $chkSaveToSite.Text = "Save extra to sites.json"
+    $chkSaveToSite.Checked = $false
+    $chkSaveToSite.Location = New-Object System.Drawing.Point(752, 45)
+    $chkSaveToSite.Size = New-Object System.Drawing.Size(180, 22)
+    $chkSaveToSite.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
+    $pnlOptions.Controls.Add($chkSaveToSite)
 
     # Bottom Container holding selection helpers and action buttons
     $pnlBottomContainer = New-Object System.Windows.Forms.Panel
@@ -756,7 +836,34 @@ function Show-SiteCompareDialog {
         $exclude = $chkExclude.Checked
         $withDel = $chkDelete.Checked
 
-        $res = Invoke-SiteCompare -Config $cfg -LocalPath $projPath -ExcludeIgnored:$exclude -WithDelete:$withDel
+        # Extract extra exclusion patterns
+        $extraArr = @($tbExtra.Text -split '[,;\r\n]+' | ForEach-Object { $_.Trim().Replace('\\', '/') } | Where-Object { $_ })
+
+        # Save extra exclusions permanently to sites.json if checked
+        if ($chkSaveToSite.Checked -and $extraArr.Count -gt 0) {
+            $cfgList = @(Get-ConfiguredSites)
+            $updated = $false
+            for ($i = 0; $i -lt $cfgList.Count; $i++) {
+                if ($cfgList[$i].localPath -eq $projPath -or $cfgList[$i].name -eq $projName) {
+                    $currentIg = [System.Collections.Generic.List[string]]::new(@($cfgList[$i].ignore))
+                    foreach ($entry in $extraArr) {
+                        if (-not $currentIg.Contains($entry)) {
+                            $currentIg.Add($entry)
+                            $updated = $true
+                        }
+                    }
+                    $cfgList[$i].ignore = @($currentIg)
+                    $cfg.Ignore = @($currentIg)
+                    break
+                }
+            }
+            if ($updated) {
+                $sitesFile = Get-SitesConfigFile
+                $cfgList | ConvertTo-Json -Depth 5 | Set-Content -Path $sitesFile -Encoding UTF8
+            }
+        }
+
+        $res = Invoke-SiteCompare -Config $cfg -LocalPath $projPath -ExcludeIgnored:$exclude -ExtraIgnore $extraArr -WithDelete:$withDel
 
         $lv.Items.Clear()
         $currentDiffs = @($res.Differences)
@@ -840,7 +947,8 @@ function Show-SiteCompareDialog {
             $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
             $form.Refresh()
 
-            $upRes = Invoke-SiteUploadDiffs -Config $cfg -LocalPath $projPath -Items $selectedItems -ExcludeIgnored:$chkExclude.Checked -WithDelete:$chkDelete.Checked
+            $extraArr = @($tbExtra.Text -split '[,;\r\n]+' | ForEach-Object { $_.Trim().Replace('\\', '/') } | Where-Object { $_ })
+            $upRes = Invoke-SiteUploadDiffs -Config $cfg -LocalPath $projPath -Items $selectedItems -ExcludeIgnored:$chkExclude.Checked -ExtraIgnore $extraArr -WithDelete:$chkDelete.Checked
 
             $form.Cursor = [System.Windows.Forms.Cursors]::Default
             $pb.Visible = $false
@@ -871,7 +979,8 @@ function Show-SiteCompareDialog {
             $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
             $form.Refresh()
 
-            $upRes = Invoke-SiteUploadDiffs -Config $cfg -LocalPath $projPath -UploadAll -ExcludeIgnored:$chkExclude.Checked -WithDelete:$chkDelete.Checked
+            $extraArr = @($tbExtra.Text -split '[,;\r\n]+' | ForEach-Object { $_.Trim().Replace('\\', '/') } | Where-Object { $_ })
+            $upRes = Invoke-SiteUploadDiffs -Config $cfg -LocalPath $projPath -UploadAll -ExcludeIgnored:$chkExclude.Checked -ExtraIgnore $extraArr -WithDelete:$chkDelete.Checked
 
             $form.Cursor = [System.Windows.Forms.Cursors]::Default
             $pb.Visible = $false
@@ -906,9 +1015,7 @@ function Show-SiteCompareDialog {
         [System.Windows.Forms.MessageBox]::Show("Report copied to clipboard!", "Report Copied", "OK", "Information") | Out-Null
     })
 
-    # Automatically run initial comparison when dialog opens
-    $form.Add_Shown({ & $runCompare })
-
+    # Do not compare on load. The user must click 'Compare Now' to scan.
     $form.ShowDialog() | Out-Null
 }
 
