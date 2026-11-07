@@ -390,6 +390,10 @@ function Invoke-Deploy {
         $proc = Start-Process -FilePath $winscp -ArgumentList $winscpArgs `
             -WindowStyle Hidden -PassThru
         Set-Content -Path $pidFile -Value $proc.Id -Encoding UTF8
+        if ($Mode -eq 'watch') {
+            $syncingFile = Join-Path $StateDir "$Key.syncing"
+            Set-Content -Path $syncingFile -Value $proc.Id -Encoding UTF8
+        }
         Write-Host "Watching $LocalPath  ->  $($Config.HostName)$($Config.RemotePath)" -ForegroundColor Green
         Write-Host "  PID $($proc.Id)   log: $logFile" -ForegroundColor DarkGray
         Write-Host "  Stop with:  Deploy-Site.ps1 -Action stop -Path ""$LocalPath""" -ForegroundColor DarkGray
@@ -434,8 +438,63 @@ function Stop-Watcher {
         Write-Host "Watcher (PID $procId) was no longer running." -ForegroundColor Yellow
     }
     Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
+    $syncingFile = Join-Path $StateDir "$Key.syncing"
+    if (Test-Path $syncingFile) { Remove-Item $syncingFile -Force -ErrorAction SilentlyContinue }
     $scriptFile = Join-Path $StateDir "$Key.txt"
     if (Test-Path $scriptFile) { Remove-Item $scriptFile -Force -ErrorAction SilentlyContinue }
+}
+
+function Test-Watching {
+    param([string]$Key)
+    $pidFile = Join-Path $StateDir "$Key.pid"
+    if (-not (Test-Path $pidFile)) { return $false }
+    $procId = (Get-Content $pidFile -Raw).Trim()
+    return $null -ne (Get-Process -Id $procId -ErrorAction SilentlyContinue)
+}
+
+function Test-SiteStartupComparing {
+    param([string]$Key)
+    $syncingFile = Join-Path $StateDir "$Key.syncing"
+    if (-not (Test-Path $syncingFile)) { return $false }
+
+    $pidFile = Join-Path $StateDir "$Key.pid"
+    if (-not (Test-Path $pidFile)) {
+        Remove-Item $syncingFile -Force -ErrorAction SilentlyContinue
+        return $false
+    }
+    $procId = (Get-Content $pidFile -Raw).Trim()
+    $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
+    if (-not $proc) {
+        Remove-Item $syncingFile -Force -ErrorAction SilentlyContinue
+        return $false
+    }
+
+    # If watcher process has been alive for more than 4 minutes, assume initial sync concluded
+    if (((Get-Date) - $proc.StartTime).TotalMinutes -ge 4) {
+        Remove-Item $syncingFile -Force -ErrorAction SilentlyContinue
+        return $false
+    }
+
+    # Inspect today's log to see if 'Watching for changes' has appeared for this process session
+    $log = Get-LogPath -Key $Key
+    $logFile = $log.Today
+    if (Test-Path $logFile) {
+        try {
+            $lines = Get-Content -Path $logFile -Tail 250 -ErrorAction SilentlyContinue
+            foreach ($line in $lines) {
+                if ($line -match '(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}).*Watching for changes') {
+                    $t = [DateTime]::Parse($matches[1])
+                    if ($t -ge $proc.StartTime.AddSeconds(-2)) {
+                        Remove-Item $syncingFile -Force -ErrorAction SilentlyContinue
+                        return $false
+                    }
+                }
+            }
+        }
+        catch { }
+    }
+
+    return $true
 }
 
 

@@ -17,9 +17,13 @@ Includes an **interactive Windows System Tray controller** with real-time status
 
 - ⚡ **Real-Time Continuous Sync (`keepuptodate`)**: Detects file creation, modification, and deletion at the OS kernel level and synchronizes changes instantly to remote servers.
 - 🚦 **Color-Coded Live Tray Status**:
-  - 🟢 **Green**: All desired watchers are active and running normally.
+  - 🔵 **Cyan (Pulsing / Blinking)**: Initial startup comparison & reconciling sync in progress on one or more projects.
+  - 🟢 **Green**: All desired watchers are active, reconciled, and watching in real time.
   - 🟡 **Yellow**: Warning state — one or more watchers are down, reconnecting, or failed.
   - ⚪ **Grey**: Idle state — all watchers stopped.
+- ⚡ **Per-Project Startup Indicators**:
+  - Each site in the tray menu displays live status badges and color-coded dot icons (`(Comparing...)`, `Watching`, or `(Down)`).
+  - Main tray icon and per-project indicators pulse during startup comparison until real-time file monitoring begins.
 - 🔍 **On-Demand Remote Comparison & Selective Upload**:
   - Compare any project against the remote server on demand from the tray menu or Site Manager.
   - Option to **exclude ignored patterns** (normal view) or **include all files** (full audit).

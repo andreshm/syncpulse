@@ -77,7 +77,7 @@ function Test-Watching {
     return $null -ne (Get-Process -Id $procId -ErrorAction SilentlyContinue)
 }
 
-function New-DotIcon {
+function New-DotBitmap {
     param([System.Drawing.Color]$Color)
     $bmp = New-Object System.Drawing.Bitmap 16, 16
     $g = [System.Drawing.Graphics]::FromImage($bmp)
@@ -86,8 +86,18 @@ function New-DotIcon {
     $brush = New-Object System.Drawing.SolidBrush $Color
     $g.FillEllipse($brush, 2, 2, 12, 12)
     $brush.Dispose(); $g.Dispose()
-    # Built once at startup and reused - creating icons per timer tick leaks GDI handles.
-    $icon = [System.Drawing.Icon]::FromHandle($bmp.GetHicon())
+    return $bmp
+}
+
+function New-DotIconFromBitmap {
+    param([System.Drawing.Bitmap]$Bmp)
+    return [System.Drawing.Icon]::FromHandle($Bmp.GetHicon())
+}
+
+function New-DotIcon {
+    param([System.Drawing.Color]$Color)
+    $bmp = New-DotBitmap $Color
+    $icon = New-DotIconFromBitmap $bmp
     $bmp.Dispose()
     return $icon
 }
@@ -517,13 +527,19 @@ function Show-SiteCompareDialog {
     $form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
     $form.MinimumSize = New-Object System.Drawing.Size(760, 460)
 
-    # Header Panel
+    # Top Container holding Header banner and Options bar
+    $pnlTop = New-Object System.Windows.Forms.Panel
+    $pnlTop.Dock = [System.Windows.Forms.DockStyle]::Top
+    $pnlTop.Height = 104
+    $form.Controls.Add($pnlTop)
+
+    # Header Panel (Top inside pnlTop)
     $pnlHeader = New-Object System.Windows.Forms.Panel
     $pnlHeader.Dock = [System.Windows.Forms.DockStyle]::Top
-    $pnlHeader.Height = 58
+    $pnlHeader.Height = 56
     $pnlHeader.BackColor = [System.Drawing.Color]::FromArgb(245, 247, 250)
     $pnlHeader.Padding = New-Object System.Windows.Forms.Padding(16, 8, 16, 8)
-    $form.Controls.Add($pnlHeader)
+    $pnlTop.Controls.Add($pnlHeader)
 
     $lblTitle = New-Object System.Windows.Forms.Label
     $lblTitle.Text = "Compare: $projName"
@@ -539,12 +555,12 @@ function Show-SiteCompareDialog {
     $lblSubtitle.Size = New-Object System.Drawing.Size(900, 20)
     $pnlHeader.Controls.Add($lblSubtitle)
 
-    # Options Panel
+    # Options Panel (Bottom inside pnlTop)
     $pnlOptions = New-Object System.Windows.Forms.Panel
-    $pnlOptions.Dock = [System.Windows.Forms.DockStyle]::Top
-    $pnlOptions.Height = 44
+    $pnlOptions.Dock = [System.Windows.Forms.DockStyle]::Bottom
+    $pnlOptions.Height = 46
     $pnlOptions.Padding = New-Object System.Windows.Forms.Padding(16, 8, 16, 4)
-    $form.Controls.Add($pnlOptions)
+    $pnlTop.Controls.Add($pnlOptions)
 
     $chkExclude = New-Object System.Windows.Forms.CheckBox
     $chkExclude.Text = "Exclude ignored files / folders"
@@ -581,12 +597,56 @@ function Show-SiteCompareDialog {
     $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(70, 80, 90)
     $pnlOptions.Controls.Add($lblStatus)
 
-    # Bottom Actions Panel
+    # Bottom Container holding selection helpers and action buttons
+    $pnlBottomContainer = New-Object System.Windows.Forms.Panel
+    $pnlBottomContainer.Dock = [System.Windows.Forms.DockStyle]::Bottom
+    $pnlBottomContainer.Height = 82
+    $form.Controls.Add($pnlBottomContainer)
+
+    # Sub-bar for selection helpers (Top of bottom container)
+    $pnlSelect = New-Object System.Windows.Forms.Panel
+    $pnlSelect.Dock = [System.Windows.Forms.DockStyle]::Top
+    $pnlSelect.Height = 28
+    $pnlSelect.Padding = New-Object System.Windows.Forms.Padding(16, 2, 16, 2)
+    $pnlBottomContainer.Controls.Add($pnlSelect)
+
+    $lblSelect = New-Object System.Windows.Forms.Label
+    $lblSelect.Text = "Select:"
+    $lblSelect.Location = New-Object System.Drawing.Point(16, 4)
+    $lblSelect.Size = New-Object System.Drawing.Size(46, 20)
+    $lblSelect.ForeColor = [System.Drawing.Color]::Gray
+    $pnlSelect.Controls.Add($lblSelect)
+
+    $lnkAll = New-Object System.Windows.Forms.LinkLabel
+    $lnkAll.Text = "All"
+    $lnkAll.Location = New-Object System.Drawing.Point(65, 4)
+    $lnkAll.Size = New-Object System.Drawing.Size(25, 20)
+    $pnlSelect.Controls.Add($lnkAll)
+
+    $lnkNone = New-Object System.Windows.Forms.LinkLabel
+    $lnkNone.Text = "None"
+    $lnkNone.Location = New-Object System.Drawing.Point(95, 4)
+    $lnkNone.Size = New-Object System.Drawing.Size(35, 20)
+    $pnlSelect.Controls.Add($lnkNone)
+
+    $lnkMod = New-Object System.Windows.Forms.LinkLabel
+    $lnkMod.Text = "Modified Only"
+    $lnkMod.Location = New-Object System.Drawing.Point(135, 4)
+    $lnkMod.Size = New-Object System.Drawing.Size(85, 20)
+    $pnlSelect.Controls.Add($lnkMod)
+
+    $lnkNew = New-Object System.Windows.Forms.LinkLabel
+    $lnkNew.Text = "New Only"
+    $lnkNew.Location = New-Object System.Drawing.Point(225, 4)
+    $lnkNew.Size = New-Object System.Drawing.Size(65, 20)
+    $pnlSelect.Controls.Add($lnkNew)
+
+    # Bottom Actions Panel (Bottom of bottom container)
     $pnlBottom = New-Object System.Windows.Forms.Panel
     $pnlBottom.Dock = [System.Windows.Forms.DockStyle]::Bottom
     $pnlBottom.Height = 52
     $pnlBottom.BackColor = [System.Drawing.Color]::FromArgb(245, 247, 250)
-    $form.Controls.Add($pnlBottom)
+    $pnlBottomContainer.Controls.Add($pnlBottom)
 
     $lblSummary = New-Object System.Windows.Forms.Label
     $lblSummary.Text = "Differences: 0  |  Selected: 0"
@@ -624,44 +684,6 @@ function Show-SiteCompareDialog {
     $btnClose.Add_Click({ $form.Close() })
     $pnlBottom.Controls.Add($btnClose)
 
-    # Sub-bar for selection helpers
-    $pnlSelect = New-Object System.Windows.Forms.Panel
-    $pnlSelect.Dock = [System.Windows.Forms.DockStyle]::Bottom
-    $pnlSelect.Height = 28
-    $pnlSelect.Padding = New-Object System.Windows.Forms.Padding(16, 2, 16, 2)
-    $form.Controls.Add($pnlSelect)
-
-    $lblSelect = New-Object System.Windows.Forms.Label
-    $lblSelect.Text = "Select:"
-    $lblSelect.Location = New-Object System.Drawing.Point(16, 4)
-    $lblSelect.Size = New-Object System.Drawing.Size(46, 20)
-    $lblSelect.ForeColor = [System.Drawing.Color]::Gray
-    $pnlSelect.Controls.Add($lblSelect)
-
-    $lnkAll = New-Object System.Windows.Forms.LinkLabel
-    $lnkAll.Text = "All"
-    $lnkAll.Location = New-Object System.Drawing.Point(65, 4)
-    $lnkAll.Size = New-Object System.Drawing.Size(25, 20)
-    $pnlSelect.Controls.Add($lnkAll)
-
-    $lnkNone = New-Object System.Windows.Forms.LinkLabel
-    $lnkNone.Text = "None"
-    $lnkNone.Location = New-Object System.Drawing.Point(95, 4)
-    $lnkNone.Size = New-Object System.Drawing.Size(35, 20)
-    $pnlSelect.Controls.Add($lnkNone)
-
-    $lnkMod = New-Object System.Windows.Forms.LinkLabel
-    $lnkMod.Text = "Modified Only"
-    $lnkMod.Location = New-Object System.Drawing.Point(135, 4)
-    $lnkMod.Size = New-Object System.Drawing.Size(85, 20)
-    $pnlSelect.Controls.Add($lnkMod)
-
-    $lnkNew = New-Object System.Windows.Forms.LinkLabel
-    $lnkNew.Text = "New Only"
-    $lnkNew.Location = New-Object System.Drawing.Point(225, 4)
-    $lnkNew.Size = New-Object System.Drawing.Size(65, 20)
-    $pnlSelect.Controls.Add($lnkNew)
-
     # Main ListView
     $lv = New-Object System.Windows.Forms.ListView
     $lv.Dock = [System.Windows.Forms.DockStyle]::Fill
@@ -671,6 +693,11 @@ function Show-SiteCompareDialog {
     $lv.CheckBoxes = $true
     $lv.HideSelection = $false
     $form.Controls.Add($lv)
+
+    # Explicit z-ordering to ensure Fill stays cleanly between Top and Bottom containers
+    $pnlTop.SendToBack()
+    $pnlBottomContainer.SendToBack()
+    $lv.BringToFront()
 
     # Columns
     $lv.Columns.Add("File / Directory", 320) | Out-Null
@@ -987,6 +1014,7 @@ function Build-TrayMenu {
         foreach ($site in $script:sites) {
             $parent = New-Object System.Windows.Forms.ToolStripMenuItem
             $parent.Text = $site.Name
+            $parent.Image = $bmpIdle
 
             $miStart = New-Object System.Windows.Forms.ToolStripMenuItem
             $miStart.Text = 'Start watching'
@@ -1054,9 +1082,17 @@ function Update-SiteListAndMenu {
 }
 
 # ---------------------------------------------------------------- tray UI
-$iconIdle = New-DotIcon -Color ([System.Drawing.Color]::FromArgb(120, 120, 120))  # Grey: all idle
-$iconBusy = New-DotIcon -Color ([System.Drawing.Color]::FromArgb(40, 180, 70))    # Green: all desired watching
-$iconWarn = New-DotIcon -Color ([System.Drawing.Color]::FromArgb(235, 170, 0))    # Yellow: 1+ watchers down / failed
+ = New-DotBitmap ([System.Drawing.Color]::FromArgb(120, 120, 120))       # Grey: all idle / stopped
+ = New-DotBitmap ([System.Drawing.Color]::FromArgb(40, 180, 70))         # Green: watching
+ = New-DotBitmap ([System.Drawing.Color]::FromArgb(235, 170, 0))         # Yellow: down / warning
+ = New-DotBitmap ([System.Drawing.Color]::FromArgb(0, 150, 240))         # Cyan: startup comparing
+ = New-DotBitmap ([System.Drawing.Color]::FromArgb(140, 225, 255))   # Bright Sky: blinking pulse
+
+ = New-DotIconFromBitmap 
+ = New-DotIconFromBitmap 
+ = New-DotIconFromBitmap 
+ = New-DotIconFromBitmap 
+ = New-DotIconFromBitmap 
 
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
 $notify = New-Object System.Windows.Forms.NotifyIcon
@@ -1071,14 +1107,18 @@ $appContext = New-Object System.Windows.Forms.ApplicationContext
 Update-SiteListAndMenu
 
 # ---------------------------------------------------------------- state polling
+$script:blinkToggle = $false
 $timer = New-Object System.Windows.Forms.Timer
-$timer.Interval = 4000
+$timer.Interval = 1000
 $timer.Add_Tick({
+        $script:blinkToggle = -not $script:blinkToggle
+
         if (((Get-Date) - $script:lastPurge).TotalHours -ge 1) {
             Remove-OldLogs -Days $LogRetentionDays
             $script:lastPurge = Get-Date
         }
         $running = @()
+        $comparing = @()
         $down = @()
 
         foreach ($s in $script:sites) {
@@ -1087,7 +1127,23 @@ $timer.Add_Tick({
             if ($isOn) {
                 # Running normally: reset failure count so only consecutive failures count
                 $s.Fails = 0
-                $running += $s.Name
+                $isComp = Test-SiteStartupComparing -Key $s.Key
+                if ($isComp) {
+                    $comparing += $s.Name
+                    if ($s.Item) {
+                        $s.Item.Image = if ($script:blinkToggle) { $bmpSync } else { $bmpSyncBlink }
+                        $s.Item.Text = "$($s.Name)  (Comparing...)"
+                        $s.Item.Checked = $true
+                    }
+                }
+                else {
+                    $running += $s.Name
+                    if ($s.Item) {
+                        $s.Item.Image = $bmpBusy
+                        $s.Item.Text = $s.Name
+                        $s.Item.Checked = $true
+                    }
+                }
             }
             elseif ($s.Desired) {
                 # A watcher is desired but not running: attempt auto-restart
@@ -1102,10 +1158,30 @@ $timer.Add_Tick({
                     }
                     $isOn = Test-Watching -Key $s.Key
                     if ($isOn) {
-                        $running += $s.Name
+                        if (Test-SiteStartupComparing -Key $s.Key) {
+                            $comparing += $s.Name
+                            if ($s.Item) {
+                                $s.Item.Image = if ($script:blinkToggle) { $bmpSync } else { $bmpSyncBlink }
+                                $s.Item.Text = "$($s.Name)  (Comparing...)"
+                                $s.Item.Checked = $true
+                            }
+                        }
+                        else {
+                            $running += $s.Name
+                            if ($s.Item) {
+                                $s.Item.Image = $bmpBusy
+                                $s.Item.Text = $s.Name
+                                $s.Item.Checked = $true
+                            }
+                        }
                     }
                     else {
                         $down += $s.Name
+                        if ($s.Item) {
+                            $s.Item.Image = $bmpWarn
+                            $s.Item.Text = "$($s.Name)  (Restarting $($s.Fails)/5...)"
+                            $s.Item.Checked = $false
+                        }
                     }
                 }
                 elseif ($s.Fails -eq 5) {
@@ -1115,25 +1191,50 @@ $timer.Add_Tick({
                         "$($s.Name): watcher keeps dying. Giving up - check the log.",
                         [System.Windows.Forms.ToolTipIcon]::Error)
                     $down += $s.Name
+                    if ($s.Item) {
+                        $s.Item.Image = $bmpWarn
+                        $s.Item.Text = "$($s.Name)  (Down)"
+                        $s.Item.Checked = $false
+                    }
                 }
                 else {
                     $down += $s.Name
+                    if ($s.Item) {
+                        $s.Item.Image = $bmpWarn
+                        $s.Item.Text = "$($s.Name)  (Down)"
+                        $s.Item.Checked = $false
+                    }
                 }
             }
             elseif ($s.Fails -gt 5) {
                 # Project gave up after repeated failures and was not restarted yet
                 $down += $s.Name
+                if ($s.Item) {
+                    $s.Item.Image = $bmpWarn
+                    $s.Item.Text = "$($s.Name)  (Down)"
+                    $s.Item.Checked = $false
+                }
             }
-
-            if ($s.Item) { $s.Item.Checked = $isOn }
+            else {
+                if ($s.Item) {
+                    $s.Item.Image = $bmpIdle
+                    $s.Item.Text = $s.Name
+                    $s.Item.Checked = $false
+                }
+            }
         }
 
         # Status determination:
+        # Cyan (blinking): 1 or more watchers are performing startup comparison
         # Yellow: 1 or more desired watchers are down/failed
         # Green: all desired watchers are active and running (>0)
         # Grey: all watchers are idle/stopped (0 desired, 0 running)
         $totalCount = if ($script:sites) { $script:sites.Count } else { 0 }
-        if ($down.Count -gt 0) {
+        if ($comparing.Count -gt 0) {
+            $notify.Icon = if ($script:blinkToggle) { $iconSync } else { $iconSyncBlink }
+            $text = "SyncPulse - startup comparing ($($comparing.Count)/$totalCount): " + ($comparing -join ', ')
+        }
+        elseif ($down.Count -gt 0) {
             $notify.Icon = $iconWarn
             $text = "SyncPulse - DOWN: " + ($down -join ', ') + " ($($running.Count)/$totalCount up)"
         }
@@ -1175,6 +1276,13 @@ finally {
     $iconIdle.Dispose()
     $iconBusy.Dispose()
     $iconWarn.Dispose()
+    $iconSync.Dispose()
+    $iconSyncBlink.Dispose()
+    $bmpIdle.Dispose()
+    $bmpBusy.Dispose()
+    $bmpWarn.Dispose()
+    $bmpSync.Dispose()
+    $bmpSyncBlink.Dispose()
     $mutex.ReleaseMutex()
     $mutex.Dispose()
 }
