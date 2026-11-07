@@ -119,7 +119,30 @@ function Start-DeployOnce {
     )
 }
 
+function Remove-OrphanWatchers {
+    $activePids = New-Object System.Collections.Generic.HashSet[int]
+    $pidFiles = Get-ChildItem -Path $StateDir -Filter '*.pid' -ErrorAction SilentlyContinue
+    foreach ($f in $pidFiles) {
+        $pVal = 0
+        if ([int]::TryParse((Get-Content $f.FullName -Raw).Trim(), [ref]$pVal)) {
+            $activePids.Add($pVal) | Out-Null
+        }
+    }
+
+    $procs = Get-CimInstance Win32_Process -Filter "Name LIKE 'WinSCP%'" -ErrorAction SilentlyContinue
+    foreach ($p in $procs) {
+        if ($p.CommandLine -like "*SyncPulse*") {
+            if (-not $activePids.Contains($p.ProcessId) -and -not $activePids.Contains($p.ParentProcessId)) {
+                try {
+                    Start-Process -FilePath 'taskkill.exe' -ArgumentList @('/PID', $p.ProcessId, '/T', '/F') -NoNewWindow -Wait -ErrorAction SilentlyContinue | Out-Null
+                } catch { }
+            }
+        }
+    }
+}
+
 function Start-AllWatchers {
+    Remove-OrphanWatchers
     foreach ($s in $script:sites) {
         $s.Desired = $true
         $s.Fails = 0
@@ -1291,16 +1314,23 @@ $timer.Add_Tick({
                         }
                     }
                 }
-                elseif ($s.Fails -eq 5) {
+                elseif ($s.Fails -ge 5) {
+                    # Notify once when threshold reached, then cool down for 60s and retry cleanly
+                    if ($s.Fails -eq 5) {
+                        $notify.ShowBalloonTip(8000, 'SyncPulse',
+                            "$($s.Name): connection issues. Will retry in 1 minute - check log.",
+                            [System.Windows.Forms.ToolTipIcon]::Warning)
+                    }
                     $s.Fails++
-                    $s.Desired = $false
-                    $notify.ShowBalloonTip(10000, 'SyncPulse',
-                        "$($s.Name): watcher keeps dying. Giving up - check the log.",
-                        [System.Windows.Forms.ToolTipIcon]::Error)
+                    if ($s.Fails -ge 65) {
+                        # Cool-down finished: clean any orphan processes and attempt fresh start
+                        Remove-OrphanWatchers
+                        $s.Fails = 1
+                    }
                     $down += $s.Name
                     if ($s.Item) {
                         $s.Item.Image = $bmpWarn
-                        $s.Item.Text = "$($s.Name)  (Down)"
+                        $s.Item.Text = "$($s.Name)  (Down - retrying)"
                         $s.Item.Checked = $false
                     }
                 }
