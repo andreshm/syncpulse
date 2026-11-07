@@ -20,6 +20,11 @@ Includes an **interactive Windows System Tray controller** with real-time status
   - 🟢 **Green**: All desired watchers are active and running normally.
   - 🟡 **Yellow**: Warning state — one or more watchers are down, reconnecting, or failed.
   - ⚪ **Grey**: Idle state — all watchers stopped.
+- 🔍 **On-Demand Remote Comparison & Selective Upload**:
+  - Compare any project against the remote server on demand from the tray menu or Site Manager.
+  - Option to **exclude ignored patterns** (normal view) or **include all files** (full audit).
+  - Clear, color-coded difference report showing new local files, modified files, size differences, and remote obsolete files.
+  - Multi-select files to **Upload Selected**, **Upload All Differences**, or simply view and copy the report without uploading.
 - 🎛️ **Interactive Site Manager GUI**:
   - Add, edit, and remove monitored websites directly from the tray icon.
   - Native **Browse...** folder picker for selecting local project roots.
@@ -79,6 +84,19 @@ To start the tray at any time without reinstalling:
 * Or execute via PowerShell:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\Deploy-Tray.ps1
+```
+
+### 4. Running Remote Comparison from Terminal
+You can also run comparison audits directly from PowerShell:
+```powershell
+# Compare with project exclusions applied
+.\Deploy-Site.ps1 -Action compare -Path D:\websites\myproject
+
+# Compare including all files (ignoring exclusions)
+.\Deploy-Site.ps1 -Action compare -Path D:\websites\myproject -IncludeIgnored
+
+# Check for obsolete remote files as well
+.\Deploy-Site.ps1 -Action compare -Path D:\websites\myproject -Delete
 ```
 
 ### 3. Add Your Monitored Sites
@@ -179,6 +197,7 @@ sudo systemctl reload sshd
 ### 2. SFTPGo Configuration (`sftpgo.json`)
 If you are using **SFTPGo**:
 - Set `"idle_timeout": 0` in `sftpgo.json` (or set a high value like `3600`) so the SFTP server does not disconnect idle watcher clients.
+- Increase `"max_per_host_connections"` (e.g. to `20` or `50`) so multiple simultaneous project watchers, editor connections, and comparison scans from your IP can run concurrently.
 - Ensure the SFTP user has standard file write/delete permissions.
 
 ### 3. Pinning Host Keys (`known-hosts.example.json`)

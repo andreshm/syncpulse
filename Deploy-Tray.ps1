@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     System tray controller for Deploy-Site.ps1.
 
@@ -458,9 +458,23 @@ function Show-SiteManagerDialog {
         }
     })
 
+    $btnCompare = New-Object System.Windows.Forms.Button
+    $btnCompare.Text = "Compare..."
+    $btnCompare.Location = New-Object System.Drawing.Point($btnX, 130)
+    $btnCompare.Size = New-Object System.Drawing.Size(105, 30)
+    $btnCompare.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
+    $btnCompare.Add_Click({
+        if ($lv.SelectedItems.Count -eq 0) {
+            [System.Windows.Forms.MessageBox]::Show("Please select a site to compare.", "Selection Required", "OK", "Information")
+            return
+        }
+        $selected = $lv.SelectedItems[0].Tag
+        Show-SiteCompareDialog -Site $selected
+    })
+
     $btnOpenJson = New-Object System.Windows.Forms.Button
     $btnOpenJson.Text = "Open sites.json"
-    $btnOpenJson.Location = New-Object System.Drawing.Point($btnX, 140)
+    $btnOpenJson.Location = New-Object System.Drawing.Point($btnX, 168)
     $btnOpenJson.Size = New-Object System.Drawing.Size(105, 30)
     $btnOpenJson.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
     $btnOpenJson.Add_Click({
@@ -477,8 +491,398 @@ function Show-SiteManagerDialog {
     $btnClose.Add_Click({ $mgrForm.Close() })
     $mgrForm.CancelButton = $btnClose
 
-    $mgrForm.Controls.AddRange(@($lv, $btnAdd, $btnEdit, $btnRemove, $btnOpenJson, $btnClose)) | Out-Null
+    $mgrForm.Controls.AddRange(@($lv, $btnAdd, $btnEdit, $btnRemove, $btnCompare, $btnOpenJson, $btnClose)) | Out-Null
     $mgrForm.ShowDialog() | Out-Null
+}
+
+
+# ---------------------------------------------------------------- Compare Dialog UI
+function Show-SiteCompareDialog {
+    param($Site)
+
+    if (-not $Site) { return }
+    $projPath = if ($Site.Path) { $Site.Path } else { $Site.localPath }
+    $projName = if ($Site.Name) { $Site.Name } else { $Site.name }
+
+    $cfg = Get-SiteConfig -ProjectPath $projPath
+    if (-not $cfg) {
+        [System.Windows.Forms.MessageBox]::Show("Could not load configuration for $projName.", "Configuration Error", "OK", "Error") | Out-Null
+        return
+    }
+
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "SyncPulse - Compare with Remote: $projName"
+    $form.Size = New-Object System.Drawing.Size(960, 620)
+    $form.StartPosition = 'CenterScreen'
+    $form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+    $form.MinimumSize = New-Object System.Drawing.Size(760, 460)
+
+    # Header Panel
+    $pnlHeader = New-Object System.Windows.Forms.Panel
+    $pnlHeader.Dock = [System.Windows.Forms.DockStyle]::Top
+    $pnlHeader.Height = 58
+    $pnlHeader.BackColor = [System.Drawing.Color]::FromArgb(245, 247, 250)
+    $pnlHeader.Padding = New-Object System.Windows.Forms.Padding(16, 8, 16, 8)
+    $form.Controls.Add($pnlHeader)
+
+    $lblTitle = New-Object System.Windows.Forms.Label
+    $lblTitle.Text = "Compare: $projName"
+    $lblTitle.Font = New-Object System.Drawing.Font('Segoe UI', 11, [System.Drawing.FontStyle]::Bold)
+    $lblTitle.Location = New-Object System.Drawing.Point(16, 6)
+    $lblTitle.Size = New-Object System.Drawing.Size(600, 24)
+    $pnlHeader.Controls.Add($lblTitle)
+
+    $lblSubtitle = New-Object System.Windows.Forms.Label
+    $lblSubtitle.Text = "Local: $projPath   ->   Remote: sftp://$($cfg.Username)@$($cfg.HostName):$($cfg.Port)$($cfg.RemotePath)"
+    $lblSubtitle.ForeColor = [System.Drawing.Color]::FromArgb(90, 100, 110)
+    $lblSubtitle.Location = New-Object System.Drawing.Point(16, 30)
+    $lblSubtitle.Size = New-Object System.Drawing.Size(900, 20)
+    $pnlHeader.Controls.Add($lblSubtitle)
+
+    # Options Panel
+    $pnlOptions = New-Object System.Windows.Forms.Panel
+    $pnlOptions.Dock = [System.Windows.Forms.DockStyle]::Top
+    $pnlOptions.Height = 44
+    $pnlOptions.Padding = New-Object System.Windows.Forms.Padding(16, 8, 16, 4)
+    $form.Controls.Add($pnlOptions)
+
+    $chkExclude = New-Object System.Windows.Forms.CheckBox
+    $chkExclude.Text = "Exclude ignored files / folders"
+    $chkExclude.Checked = $true
+    $chkExclude.Location = New-Object System.Drawing.Point(16, 10)
+    $chkExclude.Size = New-Object System.Drawing.Size(205, 24)
+    $pnlOptions.Controls.Add($chkExclude)
+
+    $chkDelete = New-Object System.Windows.Forms.CheckBox
+    $chkDelete.Text = "Check remote obsolete (with delete)"
+    $chkDelete.Checked = $false
+    $chkDelete.Location = New-Object System.Drawing.Point(230, 10)
+    $chkDelete.Size = New-Object System.Drawing.Size(230, 24)
+    $pnlOptions.Controls.Add($chkDelete)
+
+    $btnCompare = New-Object System.Windows.Forms.Button
+    $btnCompare.Text = "Compare Now"
+    $btnCompare.Location = New-Object System.Drawing.Point(470, 8)
+    $btnCompare.Size = New-Object System.Drawing.Size(110, 28)
+    $btnCompare.Font = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
+    $pnlOptions.Controls.Add($btnCompare)
+
+    $pb = New-Object System.Windows.Forms.ProgressBar
+    $pb.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
+    $pb.Location = New-Object System.Drawing.Point(590, 12)
+    $pb.Size = New-Object System.Drawing.Size(120, 20)
+    $pb.Visible = $false
+    $pnlOptions.Controls.Add($pb)
+
+    $lblStatus = New-Object System.Windows.Forms.Label
+    $lblStatus.Text = "Ready. Click 'Compare Now' to scan."
+    $lblStatus.Location = New-Object System.Drawing.Point(720, 12)
+    $lblStatus.Size = New-Object System.Drawing.Size(210, 20)
+    $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(70, 80, 90)
+    $pnlOptions.Controls.Add($lblStatus)
+
+    # Bottom Actions Panel
+    $pnlBottom = New-Object System.Windows.Forms.Panel
+    $pnlBottom.Dock = [System.Windows.Forms.DockStyle]::Bottom
+    $pnlBottom.Height = 52
+    $pnlBottom.BackColor = [System.Drawing.Color]::FromArgb(245, 247, 250)
+    $form.Controls.Add($pnlBottom)
+
+    $lblSummary = New-Object System.Windows.Forms.Label
+    $lblSummary.Text = "Differences: 0  |  Selected: 0"
+    $lblSummary.Location = New-Object System.Drawing.Point(16, 16)
+    $lblSummary.Size = New-Object System.Drawing.Size(260, 23)
+    $lblSummary.Font = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
+    $pnlBottom.Controls.Add($lblSummary)
+
+    $btnUploadSelected = New-Object System.Windows.Forms.Button
+    $btnUploadSelected.Text = "Upload Selected (0)"
+    $btnUploadSelected.Location = New-Object System.Drawing.Point(290, 12)
+    $btnUploadSelected.Size = New-Object System.Drawing.Size(155, 30)
+    $btnUploadSelected.Enabled = $false
+    $pnlBottom.Controls.Add($btnUploadSelected)
+
+    $btnUploadAll = New-Object System.Windows.Forms.Button
+    $btnUploadAll.Text = "Upload All Differences"
+    $btnUploadAll.Location = New-Object System.Drawing.Point(455, 12)
+    $btnUploadAll.Size = New-Object System.Drawing.Size(160, 30)
+    $btnUploadAll.Enabled = $false
+    $pnlBottom.Controls.Add($btnUploadAll)
+
+    $btnCopy = New-Object System.Windows.Forms.Button
+    $btnCopy.Text = "Copy Report"
+    $btnCopy.Location = New-Object System.Drawing.Point(625, 12)
+    $btnCopy.Size = New-Object System.Drawing.Size(100, 30)
+    $btnCopy.Enabled = $false
+    $pnlBottom.Controls.Add($btnCopy)
+
+    $btnClose = New-Object System.Windows.Forms.Button
+    $btnClose.Text = "Close"
+    $btnClose.Location = New-Object System.Drawing.Point(835, 12)
+    $btnClose.Size = New-Object System.Drawing.Size(95, 30)
+    $btnClose.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
+    $btnClose.Add_Click({ $form.Close() })
+    $pnlBottom.Controls.Add($btnClose)
+
+    # Sub-bar for selection helpers
+    $pnlSelect = New-Object System.Windows.Forms.Panel
+    $pnlSelect.Dock = [System.Windows.Forms.DockStyle]::Bottom
+    $pnlSelect.Height = 28
+    $pnlSelect.Padding = New-Object System.Windows.Forms.Padding(16, 2, 16, 2)
+    $form.Controls.Add($pnlSelect)
+
+    $lblSelect = New-Object System.Windows.Forms.Label
+    $lblSelect.Text = "Select:"
+    $lblSelect.Location = New-Object System.Drawing.Point(16, 4)
+    $lblSelect.Size = New-Object System.Drawing.Size(46, 20)
+    $lblSelect.ForeColor = [System.Drawing.Color]::Gray
+    $pnlSelect.Controls.Add($lblSelect)
+
+    $lnkAll = New-Object System.Windows.Forms.LinkLabel
+    $lnkAll.Text = "All"
+    $lnkAll.Location = New-Object System.Drawing.Point(65, 4)
+    $lnkAll.Size = New-Object System.Drawing.Size(25, 20)
+    $pnlSelect.Controls.Add($lnkAll)
+
+    $lnkNone = New-Object System.Windows.Forms.LinkLabel
+    $lnkNone.Text = "None"
+    $lnkNone.Location = New-Object System.Drawing.Point(95, 4)
+    $lnkNone.Size = New-Object System.Drawing.Size(35, 20)
+    $pnlSelect.Controls.Add($lnkNone)
+
+    $lnkMod = New-Object System.Windows.Forms.LinkLabel
+    $lnkMod.Text = "Modified Only"
+    $lnkMod.Location = New-Object System.Drawing.Point(135, 4)
+    $lnkMod.Size = New-Object System.Drawing.Size(85, 20)
+    $pnlSelect.Controls.Add($lnkMod)
+
+    $lnkNew = New-Object System.Windows.Forms.LinkLabel
+    $lnkNew.Text = "New Only"
+    $lnkNew.Location = New-Object System.Drawing.Point(225, 4)
+    $lnkNew.Size = New-Object System.Drawing.Size(65, 20)
+    $pnlSelect.Controls.Add($lnkNew)
+
+    # Main ListView
+    $lv = New-Object System.Windows.Forms.ListView
+    $lv.Dock = [System.Windows.Forms.DockStyle]::Fill
+    $lv.View = [System.Windows.Forms.View]::Details
+    $lv.FullRowSelect = $true
+    $lv.GridLines = $true
+    $lv.CheckBoxes = $true
+    $lv.HideSelection = $false
+    $form.Controls.Add($lv)
+
+    # Columns
+    $lv.Columns.Add("File / Directory", 320) | Out-Null
+    $lv.Columns.Add("Status", 140) | Out-Null
+    $lv.Columns.Add("Local Size", 85) | Out-Null
+    $lv.Columns.Add("Remote Size", 85) | Out-Null
+    $lv.Columns.Add("Local Modified", 130) | Out-Null
+    $lv.Columns.Add("Remote Modified", 130) | Out-Null
+
+    $currentDiffs = @()
+
+    $updateSelectionCount = {
+        $selCount = $lv.CheckedItems.Count
+        $totCount = $lv.Items.Count
+        $lblSummary.Text = "Differences: $totCount  |  Selected: $selCount"
+        $btnUploadSelected.Text = "Upload Selected ($selCount)"
+        $btnUploadSelected.Enabled = ($selCount -gt 0)
+        $btnUploadAll.Enabled = ($totCount -gt 0)
+        $btnCopy.Enabled = ($totCount -gt 0)
+    }
+
+    $lv.Add_ItemChecked({ & $updateSelectionCount })
+
+    $lnkAll.Add_LinkClicked({
+        foreach ($item in $lv.Items) { $item.Checked = $true }
+        & $updateSelectionCount
+    })
+    $lnkNone.Add_LinkClicked({
+        foreach ($item in $lv.Items) { $item.Checked = $false }
+        & $updateSelectionCount
+    })
+    $lnkMod.Add_LinkClicked({
+        foreach ($item in $lv.Items) {
+            $d = $item.Tag
+            $item.Checked = ($d -and $d.Action -eq 'uploadupdate')
+        }
+        & $updateSelectionCount
+    })
+    $lnkNew.Add_LinkClicked({
+        foreach ($item in $lv.Items) {
+            $d = $item.Tag
+            $item.Checked = ($d -and $d.Action -eq 'uploadnew')
+        }
+        & $updateSelectionCount
+    })
+
+    $runCompare = {
+        $btnCompare.Enabled = $false
+        $btnUploadSelected.Enabled = $false
+        $btnUploadAll.Enabled = $false
+        $pb.Visible = $true
+        $lblStatus.Text = "Scanning differences..."
+        $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
+        $form.Refresh()
+
+        $exclude = $chkExclude.Checked
+        $withDel = $chkDelete.Checked
+
+        $res = Invoke-SiteCompare -Config $cfg -LocalPath $projPath -ExcludeIgnored:$exclude -WithDelete:$withDel
+
+        $lv.Items.Clear()
+        $currentDiffs = @($res.Differences)
+
+        if (-not $res.Success) {
+            $lblStatus.Text = "Error during comparison."
+            [System.Windows.Forms.MessageBox]::Show("Comparison failed to complete. Check network or server connection.", "Comparison Error", "OK", "Warning") | Out-Null
+        }
+        elseif ($currentDiffs.Count -eq 0) {
+            $lblStatus.Text = "Everything in sync!"
+            $item = New-Object System.Windows.Forms.ListViewItem("(No differences - local and remote are completely in sync)")
+            $item.ForeColor = [System.Drawing.Color]::ForestGreen
+            $item.SubItems.Add("In Sync") | Out-Null
+            $lv.Items.Add($item) | Out-Null
+        }
+        else {
+            $lblStatus.Text = "$($currentDiffs.Count) difference(s) found."
+            foreach ($d in $currentDiffs) {
+                $item = New-Object System.Windows.Forms.ListViewItem($d.Relative)
+                $item.Tag = $d
+                $item.Checked = $true
+
+                # Status column
+                $item.SubItems.Add($d.Status) | Out-Null
+
+                # Local Size
+                $item.SubItems.Add((Format-FileSize $d.LocalSize)) | Out-Null
+
+                # Remote Size
+                $item.SubItems.Add((Format-FileSize $d.RemoteSize)) | Out-Null
+
+                # Local Modified
+                $locModStr = if ($d.LocalMod) { $d.LocalMod.ToString("yyyy-MM-dd HH:mm:ss") } else { "-" }
+                $item.SubItems.Add($locModStr) | Out-Null
+
+                # Remote Modified
+                $remModStr = if ($d.RemoteMod) { $d.RemoteMod.ToString("yyyy-MM-dd HH:mm:ss") } else { "-" }
+                $item.SubItems.Add($remModStr) | Out-Null
+
+                # Color coding
+                if ($d.Action -eq 'uploadnew') {
+                    $item.ForeColor = [System.Drawing.Color]::FromArgb(0, 102, 204) # Blue for new
+                }
+                elseif ($d.Action -eq 'uploadupdate') {
+                    $item.ForeColor = [System.Drawing.Color]::FromArgb(180, 90, 0) # Amber for modified
+                }
+                elseif ($d.Action -eq 'delete') {
+                    $item.ForeColor = [System.Drawing.Color]::FromArgb(180, 0, 0) # Red for obsolete
+                }
+
+                $lv.Items.Add($item) | Out-Null
+            }
+        }
+
+        $form.Cursor = [System.Windows.Forms.Cursors]::Default
+        $pb.Visible = $false
+        $btnCompare.Enabled = $true
+        & $updateSelectionCount
+    }
+
+    $btnCompare.Add_Click({ & $runCompare })
+
+    $btnUploadSelected.Add_Click({
+        $selectedItems = foreach ($item in $lv.CheckedItems) {
+            if ($item.Tag) { $item.Tag }
+        }
+        if (-not $selectedItems -or $selectedItems.Count -eq 0) { return }
+
+        $confirm = [System.Windows.Forms.MessageBox]::Show(
+            "Upload $($selectedItems.Count) selected item(s) to $($cfg.HostName)$($cfg.RemotePath)?",
+            "Confirm Upload",
+            [System.Windows.Forms.MessageBoxButtons]::YesNo,
+            [System.Windows.Forms.MessageBoxIcon]::Question)
+
+        if ($confirm -eq [System.Windows.Forms.DialogResult]::Yes) {
+            $btnUploadSelected.Enabled = $false
+            $btnUploadAll.Enabled = $false
+            $btnCompare.Enabled = $false
+            $pb.Visible = $true
+            $lblStatus.Text = "Uploading selected items..."
+            $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
+            $form.Refresh()
+
+            $upRes = Invoke-SiteUploadDiffs -Config $cfg -LocalPath $projPath -Items $selectedItems -ExcludeIgnored:$chkExclude.Checked -WithDelete:$chkDelete.Checked
+
+            $form.Cursor = [System.Windows.Forms.Cursors]::Default
+            $pb.Visible = $false
+            $btnCompare.Enabled = $true
+
+            if ($upRes.Success) {
+                [System.Windows.Forms.MessageBox]::Show("Successfully uploaded selected item(s)!", "Upload Complete", "OK", "Information") | Out-Null
+                & $runCompare
+            } else {
+                [System.Windows.Forms.MessageBox]::Show("Upload encountered errors. Check log.", "Upload Error", "OK", "Error") | Out-Null
+            }
+        }
+    })
+
+    $btnUploadAll.Add_Click({
+        $confirm = [System.Windows.Forms.MessageBox]::Show(
+            "Synchronize all differences to $($cfg.HostName)$($cfg.RemotePath)?`n`n(ExcludeIgnored: $($chkExclude.Checked), Delete: $($chkDelete.Checked))",
+            "Confirm Upload All",
+            [System.Windows.Forms.MessageBoxButtons]::YesNo,
+            [System.Windows.Forms.MessageBoxIcon]::Question)
+
+        if ($confirm -eq [System.Windows.Forms.DialogResult]::Yes) {
+            $btnUploadSelected.Enabled = $false
+            $btnUploadAll.Enabled = $false
+            $btnCompare.Enabled = $false
+            $pb.Visible = $true
+            $lblStatus.Text = "Synchronizing all differences..."
+            $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
+            $form.Refresh()
+
+            $upRes = Invoke-SiteUploadDiffs -Config $cfg -LocalPath $projPath -UploadAll -ExcludeIgnored:$chkExclude.Checked -WithDelete:$chkDelete.Checked
+
+            $form.Cursor = [System.Windows.Forms.Cursors]::Default
+            $pb.Visible = $false
+            $btnCompare.Enabled = $true
+
+            if ($upRes.Success) {
+                [System.Windows.Forms.MessageBox]::Show("Successfully synchronized all differences!", "Upload Complete", "OK", "Information") | Out-Null
+                & $runCompare
+            } else {
+                [System.Windows.Forms.MessageBox]::Show("Synchronization encountered errors. Check log.", "Upload Error", "OK", "Error") | Out-Null
+            }
+        }
+    })
+
+    $btnCopy.Add_Click({
+        if ($lv.Items.Count -eq 0) { return }
+        $sb = New-Object System.Text.StringBuilder
+        $sb.AppendLine("SyncPulse Difference Report - $projName") | Out-Null
+        $sb.AppendLine("Local: $projPath") | Out-Null
+        $sb.AppendLine("Remote: $($cfg.HostName)$($cfg.RemotePath)") | Out-Null
+        $sb.AppendLine("Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')") | Out-Null
+        $sb.AppendLine("=" * 80) | Out-Null
+        $sb.AppendLine(("{0,-35} {1,-20} {2,-12} {3,-12}" -f "File", "Status", "Local Size", "Remote Size")) | Out-Null
+        $sb.AppendLine("-" * 80) | Out-Null
+        foreach ($item in $lv.Items) {
+            if ($item.Tag) {
+                $d = $item.Tag
+                $sb.AppendLine(("{0,-35} {1,-20} {2,-12} {3,-12}" -f $d.Relative, $d.Status, (Format-FileSize $d.LocalSize), (Format-FileSize $d.RemoteSize))) | Out-Null
+            }
+        }
+        [System.Windows.Forms.Clipboard]::SetText($sb.ToString())
+        [System.Windows.Forms.MessageBox]::Show("Report copied to clipboard!", "Report Copied", "OK", "Information") | Out-Null
+    })
+
+    # Automatically run initial comparison when dialog opens
+    $form.Add_Shown({ & $runCompare })
+
+    $form.ShowDialog() | Out-Null
 }
 
 # ---------------------------------------------------------------- project synchronization
@@ -604,7 +1008,11 @@ function Build-TrayMenu {
             $miOnce.Text = 'Deploy once...'
             $miOnce.Add_Click({ Start-DeployOnce -ProjectPath $site.Path }.GetNewClosure())
 
-            $parent.DropDownItems.AddRange(@($miStart, $miStop, $miOnce)) | Out-Null
+            $miCompare = New-Object System.Windows.Forms.ToolStripMenuItem
+            $miCompare.Text = 'Compare with remote...'
+            $miCompare.Add_Click({ Show-SiteCompareDialog -Site $site }.GetNewClosure())
+
+            $parent.DropDownItems.AddRange(@($miStart, $miStop, $miOnce, $miCompare)) | Out-Null
             $menu.Items.Add($parent) | Out-Null
             $site.Item = $parent
         }

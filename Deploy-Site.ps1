@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Deploys a website to its SFTP server using WinSCP, driven by the project's
     existing .vscode\sftp.json (no second copy of credentials to maintain).
@@ -30,13 +30,16 @@
 param(
     # 'library' defines the functions and returns without doing anything, so other
     # scripts (Deploy-Tray.ps1) can dot-source this file and reuse them.
-    [ValidateSet('once', 'watch', 'start', 'stop', 'status', 'library')]
+    [ValidateSet('once', 'watch', 'start', 'stop', 'status', 'compare', 'library')]
     [string]$Action = 'once',
 
     [string]$Path = (Get-Location).Path,
 
     # Opt-in only. Removes remote files that no longer exist locally.
     [switch]$Delete,
+
+    # When comparing, include all files by bypassing the exclusion rules.
+    [switch]$IncludeIgnored,
 
     # Override WinSCP location if installed somewhere unusual.
     [string]$WinScpPath,
@@ -435,6 +438,228 @@ function Stop-Watcher {
     if (Test-Path $scriptFile) { Remove-Item $scriptFile -Force -ErrorAction SilentlyContinue }
 }
 
+
+function Format-FileSize {
+    param([int64]$Bytes)
+    if ($null -eq $Bytes) { return "-" }
+    if ($Bytes -lt 1KB) { return "$Bytes B" }
+    if ($Bytes -lt 1MB) { return "$([math]::Round($Bytes / 1KB, 1)) KB" }
+    if ($Bytes -lt 1GB) { return "$([math]::Round($Bytes / 1MB, 2)) MB" }
+    return "$([math]::Round($Bytes / 1GB, 2)) GB"
+}
+
+function Invoke-SiteCompare {
+    <#
+    .SYNOPSIS
+        Compares local and remote directories using WinSCP synchronize -preview.
+        Returns a structured difference list without making any file changes.
+    #>
+    param(
+        $Config,
+        [string]$LocalPath,
+        [switch]$ExcludeIgnored = $true,
+        [switch]$WithDelete
+    )
+
+    $winscp = Get-WinScp -Override $script:WinScpPath
+    $local = $LocalPath.TrimEnd('\')
+    $remote = $Config.RemotePath
+    $escPass = if ($Config.Password) { $Config.Password -replace '"', '""' } else { '' }
+    $openCmd = 'open sftp://{0}@{1}:{2}/ -password="{3}" -hostkey="{4}" -timeout=25 -rawsettings AddressFamily={5} PingType=2 PingInterval=1 TCPKeepalives=1 RekeyTime=0 RekeyData=0' -f `
+        $Config.Username, $Config.HostName, $Config.Port, $escPass, $Config.HostKey, $script:AddressFamily
+
+    $mask = if ($ExcludeIgnored) { ConvertTo-FileMask -Ignore $Config.Ignore } else { ConvertTo-FileMask -Ignore @() }
+    $syncOpts = "-nopermissions -transfer=binary -resumesupport=off -criteria=time,size -mirror -preview"
+    if ($mask) { $syncOpts = "$syncOpts -filemask=""$mask""" }
+    if ($WithDelete) { $syncOpts = "$syncOpts -delete" }
+
+    $tempBase = Join-Path $StateDir "compare_$([guid]::NewGuid().ToString('N').Substring(0,8))"
+    $scriptFile = "$tempBase.txt"
+    $xmlLog = "$tempBase.xml"
+
+    $lines = @(
+        'option batch continue',
+        'option confirm off',
+        $openCmd,
+        ('synchronize remote {0} "{1}" "{2}"' -f $syncOpts, $local, $remote),
+        'exit'
+    )
+    Set-Content -Path $scriptFile -Value ($lines -join "`r`n") -Encoding UTF8
+
+    # Temporarily pause background watcher if running to free up server connection slot
+    $key = Get-ProjectKey -ProjectPath $local
+    $pidFile = Join-Path $StateDir "$key.pid"
+    $wasWatching = $false
+    if (Test-Path $pidFile) {
+        $watcherProcId = (Get-Content $pidFile -Raw).Trim()
+        if ($watcherProcId -and (Get-Process -Id $watcherProcId -ErrorAction SilentlyContinue)) {
+            $wasWatching = $true
+            Stop-Watcher -Key $key -LocalPath $local
+            Start-Sleep -Milliseconds 400
+        }
+    }
+
+    $rawOutput = $null
+    $exitCode = 0
+    try {
+        $rawOutput = & $winscp /ini=nul /script="$scriptFile" /xmllog="$xmlLog"
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        if (Test-Path $scriptFile) { Remove-Item $scriptFile -Force -ErrorAction SilentlyContinue }
+        if ($wasWatching) {
+            Invoke-Deploy -Config $Config -LocalPath $local -Mode 'watch' -Key $key -Detached
+        }
+    }
+
+    $diffs = @()
+    if (Test-Path $xmlLog) {
+        try {
+            [xml]$xml = Get-Content $xmlLog
+            foreach ($d in $xml.session.difference) {
+                $act = "$($d.action.value)"
+                $typeVal = if ($d.type) { if ($d.type -is [array]) { $d.type[0].value } else { $d.type.value } } else { '-' }
+                $isDir = ($typeVal -eq 'D')
+
+                $filenames = @($d.filename)
+                $sizes = @($d.size)
+                $mods = @($d.modification)
+
+                $localFullPath = if ($filenames.Count -ge 1) { "$($filenames[0].value)" } else { "" }
+                $remoteFullPath = if ($filenames.Count -ge 2) { "$($filenames[1].value)" } else { "" }
+
+                $relPath = if ($localFullPath -and $localFullPath.StartsWith($local, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $localFullPath.Substring($local.Length).TrimStart('\', '/')
+                }
+                elseif ($remoteFullPath -and $remoteFullPath.StartsWith($remote, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $remoteFullPath.Substring($remote.Length).TrimStart('/')
+                }
+                else {
+                    $localFullPath
+                }
+
+                $localSizeVal = if ($sizes.Count -ge 1 -and $sizes[0].value) { [int64]$sizes[0].value } else { $null }
+                $remoteSizeVal = if ($sizes.Count -ge 2 -and $sizes[1].value) { [int64]$sizes[1].value } else { $null }
+
+                $localModVal = if ($mods.Count -ge 1 -and $mods[0].value) { [datetime]$mods[0].value } else { $null }
+                $remoteModVal = if ($mods.Count -ge 2 -and $mods[1].value) { [datetime]$mods[1].value } else { $null }
+
+                $statusText = switch ($act) {
+                    'uploadnew'    { if ($isDir) { 'New Directory' } else { 'New Local File' } }
+                    'uploadupdate' { 'Modified / Different' }
+                    'delete'       { 'Remote Obsolete (Delete)' }
+                    default        { $act }
+                }
+
+                $diffs += [PSCustomObject]@{
+                    Action     = $act
+                    IsDir      = $isDir
+                    Status     = $statusText
+                    Relative   = $relPath
+                    LocalPath  = $localFullPath
+                    RemotePath = $remoteFullPath
+                    LocalSize  = $localSizeVal
+                    RemoteSize = $remoteSizeVal
+                    LocalMod   = $localModVal
+                    RemoteMod  = $remoteModVal
+                }
+            }
+        }
+        finally {
+            Remove-Item $xmlLog -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    return @{
+        Success     = ($exitCode -eq 0)
+        Differences = $diffs
+        RawOutput   = $rawOutput
+    }
+}
+
+function Invoke-SiteUploadDiffs {
+    <#
+    .SYNOPSIS
+        Uploads selected different files or runs full synchronization.
+    #>
+    param(
+        $Config,
+        [string]$LocalPath,
+        [array]$Items,
+        [switch]$UploadAll,
+        [switch]$ExcludeIgnored = $true,
+        [switch]$WithDelete
+    )
+
+    $winscp = Get-WinScp -Override $script:WinScpPath
+    $local = $LocalPath.TrimEnd('\')
+    $remote = $Config.RemotePath
+    $escPass = if ($Config.Password) { $Config.Password -replace '"', '""' } else { '' }
+    $openCmd = 'open sftp://{0}@{1}:{2}/ -password="{3}" -hostkey="{4}" -timeout=25 -rawsettings AddressFamily={5} PingType=2 PingInterval=1 TCPKeepalives=1 RekeyTime=0 RekeyData=0' -f `
+        $Config.Username, $Config.HostName, $Config.Port, $escPass, $Config.HostKey, $script:AddressFamily
+
+    $tempScript = Join-Path $StateDir "upload_diffs_$([guid]::NewGuid().ToString('N').Substring(0,8)).txt"
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add('option batch abort') | Out-Null
+    $lines.Add('option confirm off') | Out-Null
+    $lines.Add($openCmd) | Out-Null
+
+    if ($UploadAll) {
+        $mask = if ($ExcludeIgnored) { ConvertTo-FileMask -Ignore $Config.Ignore } else { ConvertTo-FileMask -Ignore @() }
+        $syncOpts = "-nopermissions -transfer=binary -resumesupport=off -criteria=time,size -mirror"
+        if ($mask) { $syncOpts = "$syncOpts -filemask=""$mask""" }
+        if ($WithDelete) { $syncOpts = "$syncOpts -delete" }
+        $lines.Add(('synchronize remote {0} "{1}" "{2}"' -f $syncOpts, $local, $remote)) | Out-Null
+    }
+    else {
+        foreach ($item in $Items) {
+            $rel = $item.Relative -replace '\\', '/'
+            $targetRemote = "$($remote.TrimEnd('/'))/$rel"
+            if ($item.IsDir) {
+                $lines.Add(('synchronize remote -nopermissions -transfer=binary -resumesupport=off "{0}" "{1}"' -f $item.LocalPath, $targetRemote)) | Out-Null
+            }
+            elseif ($item.Action -eq 'delete') {
+                $lines.Add(('rm "{0}"' -f $targetRemote)) | Out-Null
+            }
+            else {
+                $lines.Add(('put -nopermissions -transfer=binary -resumesupport=off "{0}" "{1}"' -f $item.LocalPath, $targetRemote)) | Out-Null
+            }
+        }
+    }
+    $lines.Add('exit') | Out-Null
+    Set-Content -Path $tempScript -Value ($lines -join "`r`n") -Encoding UTF8
+
+    $key = Get-ProjectKey -ProjectPath $local
+    $pidFile = Join-Path $StateDir "$key.pid"
+    $wasWatching = $false
+    if (Test-Path $pidFile) {
+        $watcherProcId = (Get-Content $pidFile -Raw).Trim()
+        if ($watcherProcId -and (Get-Process -Id $watcherProcId -ErrorAction SilentlyContinue)) {
+            $wasWatching = $true
+            Stop-Watcher -Key $key -LocalPath $local
+            Start-Sleep -Milliseconds 400
+        }
+    }
+
+    $rawOutput = $null
+    $exitCode = 0
+    try {
+        $rawOutput = & $winscp /ini=nul /script="$tempScript"
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        if (Test-Path $tempScript) { Remove-Item $tempScript -Force -ErrorAction SilentlyContinue }
+        if ($wasWatching) {
+            Invoke-Deploy -Config $Config -LocalPath $local -Mode 'watch' -Key $key -Detached
+        }
+    }
+
+    return @{
+        Success   = ($exitCode -eq 0)
+        RawOutput = $rawOutput
+    }
+}
+
 function Show-Status {
     $pidFiles = Get-ChildItem -Path $StateDir -Filter '*.pid' -ErrorAction SilentlyContinue
     if (-not $pidFiles) {
@@ -495,5 +720,29 @@ switch ($Action) {
         }
         $cfg = Get-SiteConfig -ProjectPath $Path
         Invoke-Deploy -Config $cfg -LocalPath $Path -Mode 'watch' -Key $key -Detached -WithDelete:$Delete
+    }
+    'compare' {
+        $cfg = Get-SiteConfig -ProjectPath $Path
+        $exclude = -not $IncludeIgnored
+        Write-Host "Comparing $Path with $($cfg.HostName)$($cfg.RemotePath) (ExcludeIgnored: $exclude, Delete: $($Delete.IsPresent))..." -ForegroundColor Cyan
+        $res = Invoke-SiteCompare -Config $cfg -LocalPath $Path -ExcludeIgnored:$exclude -WithDelete:$Delete
+        if (-not $res.Success) {
+            Write-Host "Comparison encountered an error. Check server connection." -ForegroundColor Red
+            return
+        }
+        if ($res.Differences.Count -eq 0) {
+            Write-Host "No differences found - remote and local are completely synchronized!" -ForegroundColor Green
+            return
+        }
+        Write-Host "Found $($res.Differences.Count) difference(s):" -ForegroundColor Yellow
+        $table = foreach ($d in $res.Differences) {
+            [PSCustomObject]@{
+                Status     = $d.Status
+                File       = $d.Relative
+                LocalSize  = Format-FileSize $d.LocalSize
+                RemoteSize = Format-FileSize $d.RemoteSize
+            }
+        }
+        $table | Format-Table -AutoSize
     }
 }
