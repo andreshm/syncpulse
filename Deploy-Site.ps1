@@ -261,7 +261,9 @@ function ConvertTo-FileMask {
     <#
       Translates the gitignore-style "ignore" array from sftp.json into a WinSCP
       exclude mask. WinSCP matches a bare name against files only, and a name with
-      a trailing slash against directories, so non-wildcard entries emit both forms.
+      a trailing slash against directories. Entries with trailing slashes (e.g. 'tmp/',
+      'temp/') are treated as directory-only exclusions and will not exclude files.
+      Bare non-wildcard entries emit both forms.
 
       Always includes built-in exclusions for Windows reserved device names
       (NUL, CON, PRN, AUX, COM1-9, LPT1-9) so accidental Git redirection files
@@ -288,10 +290,15 @@ function ConvertTo-FileMask {
 
     if ($Ignore) {
         foreach ($entry in $Ignore) {
-            $e = "$entry".Trim().Trim('/')
+            $raw = "$entry".Trim()
+            if (-not $raw) { continue }
+            $isDirOnly = $raw.EndsWith('/') -or $raw.EndsWith('\')
+            $e = $raw.Trim('/').Trim('\')
             if (-not $e) { continue }
             if ($seen.Add("$e/")) { $parts.Add("$e/") | Out-Null }   # directory match
-            if ($seen.Add($e)) { $parts.Add($e) | Out-Null }        # file match
+            if (-not $isDirOnly) {
+                if ($seen.Add($e)) { $parts.Add($e) | Out-Null }     # file match (only if not folder-only)
+            }
         }
     }
     if ($parts.Count -eq 0) { return $null }
